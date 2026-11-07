@@ -4,7 +4,7 @@ A beginner-friendly Python and PostgreSQL data engineering project for bringing 
 
 ## Project Status
 
-**Phase 1 complete:** project folders, configuration examples, Python dependencies, and sample CSV datasets are in place. Ingestion, validation, transformations, warehouse loading, analytics, and the executable pipeline will be added in later phases. As a result, `python main.py` is not available yet.
+**Phases 1 and 2 complete:** the scaffold, sample CSV data, CSV/API/PostgreSQL ingestion modules, and a local mock orders API are available. Validation, transformations, warehouse loading, analytics, and the end-to-end `main.py` runner will be added in later phases.
 
 ## Sample Data
 
@@ -21,19 +21,20 @@ Order dates and update timestamps use ISO 8601 UTC values. Order customer and pr
 ## Project Structure
 
 ```text
-config/                 Non-secret pipeline settings
- data/                   Pipeline data folders
-   raw/                  Original ingested records
-   clean/                Validated and cleaned records
-   curated/              Business-ready records
-   quarantine/           Rejected records
-   sample/               Local CSV input data
-src/                     Pipeline Python modules (added in later phases)
-sql/                     Database DDL and analytics SQL (later phases)
-logs/                    Pipeline execution logs
- tests/                  Automated tests (later phases)
-requirements.txt         Python dependencies
-.env.example             Local environment variable template
+config/                  Non-secret pipeline settings
+data/                    Pipeline data folders
+  raw/                   Original ingested records
+  clean/                 Validated and cleaned records
+  curated/               Business-ready records
+  quarantine/            Rejected records
+  sample/                Local CSV input data
+src/ingestion/            CSV, REST API, and PostgreSQL readers
+src/utils/                Configuration and database connection helpers
+sql/                      Database DDL and analytics SQL (later phases)
+logs/                     Pipeline execution logs
+tests/                    Ingestion tests
+requirements.txt          Python dependencies
+.env.example              Local environment variable template
 ```
 
 ## Windows Setup
@@ -47,16 +48,39 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-The sample CSV files can be reviewed with a spreadsheet application or Python. PostgreSQL credentials are not stored in the repository. When database connectivity is implemented, copy `.env.example` to `.env` and replace its example values with credentials for your local PostgreSQL instance. The `.env` file is excluded from Git.
+PostgreSQL credentials are not stored in the repository. Copy `.env.example` to `.env` and replace its example values with credentials for your local PostgreSQL instance before extracting from PostgreSQL. The `.env` file is excluded from Git.
 
 ## Configuration
 
-`config/config.yaml` contains non-secret paths and settings. Database variable names are listed there; actual credentials belong in the local `.env` file, never in the YAML file or source code.
+`config/config.yaml` contains non-secret paths, API settings, and database environment-variable names. Actual credentials belong in the local `.env` file, never in the YAML file or source code.
+
+## Run Ingestion
+
+Run the local sample API in one PowerShell terminal:
+
+```powershell
+python -m src.ingestion.mock_api
+```
+
+In a second terminal, ingest the CSV sample files or call the mock API:
+
+```powershell
+python -c "from src.ingestion.csv_ingestion import ingest_sample_csvs; print({name: len(data) for name, data in ingest_sample_csvs().items()})"
+python -c "from src.ingestion.api_ingestion import ingest_orders; print(len(ingest_orders()))"
+```
+
+Each source writes timestamped CSV snapshots under `data/raw/`. The API reader uses `ORDERS_API_URL` when set and otherwise calls the local mock API. PostgreSQL extraction reads the `customers`, `products`, or `orders` table and requires the corresponding settings in `.env`:
+
+```powershell
+python -c "from src.ingestion.postgres_ingestion import extract_table; print(len(extract_table('orders')))"
+```
+
+Run the Phase 2 tests with `pytest`.
 
 ## Planned Pipeline Phases
 
-1. Create the project scaffold and sample data.
-2. Ingest API, CSV, and PostgreSQL records.
+1. Create the project scaffold and sample data. (Complete)
+2. Ingest API, CSV, and PostgreSQL records. (Complete)
 3. Validate, clean, and deduplicate records.
 4. Store raw, clean, and curated data.
 5. Create the PostgreSQL star schema.

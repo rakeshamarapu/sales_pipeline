@@ -1,0 +1,1 @@
+"""Retail omnichannel sales pipeline package."""

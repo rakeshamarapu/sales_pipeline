@@ -18,3 +18,5 @@ paths:
 ingestion:
   timezone: UTC
   api_timeout_seconds: 30
+  orders_api_url_env: ORDERS_API_URL
+  default_orders_api_url: http://127.0.0.1:5000/api/orders
