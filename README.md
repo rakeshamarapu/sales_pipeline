@@ -4,7 +4,7 @@ A beginner-friendly Python and PostgreSQL data engineering project for bringing 
 
 ## Project Status
 
-**Phases 1 through 4 complete:** the scaffold, sample data, source ingestion, schema validation, quarantine output, cleaning, deduplication, and file-based raw/clean/curated layers are available. Business transformations, warehouse loading, analytics, and the end-to-end `main.py` runner will be added in later phases.
+**Phases 1 through 5 complete:** the scaffold, sample data, source ingestion, validation and cleaning, file-based data layers, and PostgreSQL star-schema DDL are available. SCD Type 2, warehouse loading, analytics, and the end-to-end `main.py` runner will be added in later phases.
 
 ## Sample Data
 
@@ -31,6 +31,8 @@ data/                    Pipeline data folders
 src/ingestion/            CSV, REST API, and PostgreSQL readers
 src/validation/           Required-field, format, date, and reference checks
 src/transformation/       Cleaning, deduplication, and layer snapshot storage
+src/warehouse/            Star-schema DDL and PostgreSQL setup helpers
+sql/create_tables.sql     Standalone copy of the star-schema DDL
 src/utils/                Configuration and database connection helpers
 sql/                      Database DDL and analytics SQL (later phases)
 logs/                     Pipeline execution logs
@@ -123,13 +125,32 @@ write_curated_snapshot(cleaning_result.clean_records, "customers", run_id=run_id
 latest_customers = read_latest_snapshot("clean", "customers")
 ```
 
+## Initialize the PostgreSQL Star Schema
+
+Create the PostgreSQL database first, then set its connection values in `.env`. The schema initializer creates `dim_customer`, `dim_product`, `dim_date`, and `fact_sales` with primary keys, foreign keys, checks, and indexes. It is safe to rerun. Populate the date dimension with the inclusive date range needed by your sales data:
+
+```python
+from datetime import date
+
+from src.warehouse.schema_manager import (
+  initialize_star_schema,
+  populate_date_dimension,
+)
+
+initialize_star_schema()
+inserted_dates = populate_date_dimension(date(2025, 1, 1), date(2025, 12, 31))
+print(f"Inserted {inserted_dates} date rows")
+```
+
+The date dimension uses `YYYYMMDD` integer keys and ignores dates already loaded. The schema files are [src/warehouse/star_schema.sql](src/warehouse/star_schema.sql) and [sql/create_tables.sql](sql/create_tables.sql); the tests ensure they stay identical. PostgreSQL execution requires a reachable server and database and has not been run in the current development environment.
+
 ## Planned Pipeline Phases
 
 1. Create the project scaffold and sample data. (Complete)
 2. Ingest API, CSV, and PostgreSQL records. (Complete)
 3. Validate, clean, and deduplicate records. (Complete)
 4. Store raw, clean, and curated data. (Complete)
-5. Create the PostgreSQL star schema.
+5. Create the PostgreSQL star schema. (Complete; live database execution pending)
 6. Add SCD Type 2 and incremental loading.
 7. Add analytics, logging, and reconciliation.
 8. Add automated tests and complete run documentation.
