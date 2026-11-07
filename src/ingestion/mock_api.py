@@ -4,9 +4,12 @@ import csv
 import json
 import logging
 import os
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 from urllib.parse import parse_qs, urlparse
+from collections.abc import Iterator
 
 import pandas as pd
 
@@ -86,6 +89,23 @@ def run_server(host: str = "127.0.0.1", port: int = 5000) -> None:
         logger.info("Stopping mock orders API")
     finally:
         server.server_close()
+
+
+@contextmanager
+def serve_mock_api(
+    sample_file: str | Path = DEFAULT_ORDERS_FILE,
+    host: str = "127.0.0.1",
+) -> Iterator[str]:
+    """Serve the mock API on an ephemeral local port for the context duration."""
+    server = ThreadingHTTPServer((host, 0), create_handler(sample_file))
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://{host}:{server.server_port}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 if __name__ == "__main__":
