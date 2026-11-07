@@ -1,0 +1,16 @@
+product_id,product_name,category,price,updated_at
+P001,Wireless Earbuds,Electronics,2499.00,2025-01-01T08:00:00Z
+P002,Stainless Steel Bottle,Home & Kitchen,699.00,2025-01-01T08:05:00Z
+P003,Running Shoes,Sports,3299.00,2025-01-01T08:10:00Z
+P004,Cotton T-Shirt,Apparel,899.00,2025-01-01T08:15:00Z
+P005,Smart LED Bulb,Home & Kitchen,499.00,2025-01-01T08:20:00Z
+P006,Mechanical Keyboard,Electronics,4599.00,2025-01-01T08:25:00Z
+P007,Travel Backpack,Apparel,2199.00,2025-01-01T08:30:00Z
+P008,Yoga Mat,Sports,1199.00,2025-01-01T08:35:00Z
+P009,Ceramic Coffee Mug,Home & Kitchen,399.00,2025-01-01T08:40:00Z
+P010,Portable Power Bank,Electronics,1899.00,2025-01-01T08:45:00Z
+P011,Denim Jeans,Apparel,2799.00,2025-01-01T08:50:00Z
+P012,Digital Kitchen Scale,Home & Kitchen,999.00,2025-01-01T08:55:00Z
+P013,Cricket Bat,Sports,2499.00,2025-01-01T09:00:00Z
+P014,USB-C Charging Cable,Electronics,349.00,2025-01-01T09:05:00Z
+P015,Insulated Lunch Box,Home & Kitchen,849.00,2025-01-01T09:10:00Z

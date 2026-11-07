@@ -1,0 +1,20 @@
+# Non-secret pipeline settings. Credentials belong in the local .env file.
+database:
+  host_env: DB_HOST
+  port_env: DB_PORT
+  name_env: DB_NAME
+  user_env: DB_USER
+  password_env: DB_PASSWORD
+  default_port: 5432
+
+paths:
+  sample_data: data/sample
+  raw_data: data/raw
+  clean_data: data/clean
+  curated_data: data/curated
+  quarantine_data: data/quarantine
+  logs: logs
+
+ingestion:
+  timezone: UTC
+  api_timeout_seconds: 30

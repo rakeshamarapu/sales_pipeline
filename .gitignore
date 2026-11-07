@@ -1,0 +1,27 @@
+# Secrets and local environment
+.env
+.venv/
+venv/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local pipeline outputs (keep directory markers)
+data/raw/*
+!data/raw/.gitkeep
+data/clean/*
+!data/clean/.gitkeep
+data/curated/*
+!data/curated/.gitkeep
+data/quarantine/*
+!data/quarantine/.gitkeep
+logs/*
+!logs/.gitkeep
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
