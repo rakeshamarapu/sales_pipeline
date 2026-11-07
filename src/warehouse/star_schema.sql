@@ -8,12 +8,23 @@ CREATE TABLE IF NOT EXISTS dim_customer (
     effective_start_date DATE NOT NULL,
     effective_end_date DATE,
     is_current BOOLEAN NOT NULL DEFAULT TRUE,
+    source_updated_at TIMESTAMPTZ NOT NULL,
     CONSTRAINT ck_dim_customer_effective_dates
-        CHECK (effective_end_date IS NULL OR effective_end_date > effective_start_date),
+        CHECK (effective_end_date IS NULL OR effective_end_date >= effective_start_date),
     CONSTRAINT ck_dim_customer_current_end_date
         CHECK ((is_current AND effective_end_date IS NULL)
             OR (NOT is_current AND effective_end_date IS NOT NULL))
 );
+
+ALTER TABLE dim_customer
+    ADD COLUMN IF NOT EXISTS source_updated_at TIMESTAMPTZ;
+
+UPDATE dim_customer
+SET source_updated_at = effective_start_date::TIMESTAMP AT TIME ZONE 'UTC'
+WHERE source_updated_at IS NULL;
+
+ALTER TABLE dim_customer
+    ALTER COLUMN source_updated_at SET NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_dim_customer_current_business_key
     ON dim_customer (customer_id)
@@ -28,8 +39,19 @@ CREATE TABLE IF NOT EXISTS dim_product (
     product_name TEXT NOT NULL,
     category TEXT NOT NULL,
     price NUMERIC(12, 2) NOT NULL,
+    source_updated_at TIMESTAMPTZ NOT NULL,
     CONSTRAINT ck_dim_product_positive_price CHECK (price > 0)
 );
+
+ALTER TABLE dim_product
+    ADD COLUMN IF NOT EXISTS source_updated_at TIMESTAMPTZ;
+
+UPDATE dim_product
+SET source_updated_at = CURRENT_TIMESTAMP
+WHERE source_updated_at IS NULL;
+
+ALTER TABLE dim_product
+    ALTER COLUMN source_updated_at SET NOT NULL;
 
 CREATE INDEX IF NOT EXISTS ix_dim_product_category
     ON dim_product (category);
@@ -58,6 +80,8 @@ CREATE TABLE IF NOT EXISTS fact_sales (
     total_amount NUMERIC(14, 2) NOT NULL,
     order_status TEXT NOT NULL,
     source_system TEXT NOT NULL,
+    source_updated_at TIMESTAMPTZ NOT NULL,
+    ingestion_timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT ck_fact_sales_positive_quantity CHECK (quantity > 0),
     CONSTRAINT ck_fact_sales_positive_unit_price CHECK (unit_price > 0),
     CONSTRAINT ck_fact_sales_positive_total CHECK (total_amount > 0),
@@ -74,6 +98,19 @@ CREATE TABLE IF NOT EXISTS fact_sales (
         ON UPDATE RESTRICT ON DELETE RESTRICT
 );
 
+ALTER TABLE fact_sales
+    ADD COLUMN IF NOT EXISTS source_updated_at TIMESTAMPTZ;
+
+ALTER TABLE fact_sales
+    ADD COLUMN IF NOT EXISTS ingestion_timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+UPDATE fact_sales
+SET source_updated_at = ingestion_timestamp
+WHERE source_updated_at IS NULL;
+
+ALTER TABLE fact_sales
+    ALTER COLUMN source_updated_at SET NOT NULL;
+
 CREATE INDEX IF NOT EXISTS ix_fact_sales_customer_key
     ON fact_sales (customer_key);
 
@@ -88,3 +125,16 @@ CREATE INDEX IF NOT EXISTS ix_fact_sales_order_status
 
 CREATE INDEX IF NOT EXISTS ix_fact_sales_source_system
     ON fact_sales (source_system);
+
+CREATE TABLE IF NOT EXISTS pipeline_watermark (
+    pipeline_name TEXT PRIMARY KEY,
+    watermark_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE dim_customer
+    DROP CONSTRAINT IF EXISTS ck_dim_customer_effective_dates;
+
+ALTER TABLE dim_customer
+    ADD CONSTRAINT ck_dim_customer_effective_dates
+    CHECK (effective_end_date IS NULL OR effective_end_date >= effective_start_date);

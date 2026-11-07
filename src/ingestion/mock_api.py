@@ -6,7 +6,9 @@ import logging
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
+
+import pandas as pd
 
 from src.utils.config import get_project_root
 
@@ -31,6 +33,26 @@ def create_handler(sample_file: str | Path = DEFAULT_ORDERS_FILE):
             try:
                 with orders_path.open("r", encoding="utf-8", newline="") as orders_file:
                     orders = list(csv.DictReader(orders_file))
+                updated_since_values = parse_qs(urlparse(self.path).query).get(
+                    "updated_since"
+                )
+                if updated_since_values:
+                    watermark = pd.to_datetime(
+                        updated_since_values[0], errors="raise", utc=True
+                    )
+                    orders = [
+                        order
+                        for order in orders
+                        if pd.isna(
+                            pd.to_datetime(
+                                order.get("updated_at"), errors="coerce", utc=True
+                            )
+                        )
+                        or pd.to_datetime(
+                            order.get("updated_at"), errors="coerce", utc=True
+                        )
+                        >= watermark
+                    ]
                 for order in orders:
                     order["quantity"] = int(order["quantity"])
             except (OSError, KeyError, ValueError):

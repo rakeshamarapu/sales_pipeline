@@ -61,7 +61,13 @@ def test_schema_contains_dimensions_fact_constraints_and_indexes() -> None:
 
     assert standalone_schema == DEFAULT_SCHEMA_PATH.read_text(encoding="utf-8")
 
-    for table_name in ("dim_customer", "dim_product", "dim_date", "fact_sales"):
+    for table_name in (
+        "dim_customer",
+        "dim_product",
+        "dim_date",
+        "fact_sales",
+        "pipeline_watermark",
+    ):
         assert f"create table if not exists {table_name}" in schema_sql
     for required_column in (
         "effective_start_date",
@@ -69,12 +75,18 @@ def test_schema_contains_dimensions_fact_constraints_and_indexes() -> None:
         "is_current",
         "total_amount",
         "source_system",
+        "source_updated_at",
+        "ingestion_timestamp",
     ):
         assert required_column in schema_sql
     assert "references dim_customer (customer_key)" in schema_sql
     assert "references dim_product (product_key)" in schema_sql
     assert "references dim_date (date_key)" in schema_sql
     assert "create index if not exists ix_fact_sales_date_key" in schema_sql
+    assert "effective_end_date >= effective_start_date" in schema_sql
+    assert "alter table dim_customer" in schema_sql
+    assert "source_updated_at timestamptz not null" in schema_sql
+    assert "add column if not exists source_updated_at" in schema_sql
 
 
 def test_initialize_schema_executes_ddl_in_transaction() -> None:

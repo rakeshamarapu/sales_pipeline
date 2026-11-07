@@ -9,7 +9,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.engine import Engine
 
-from src.ingestion.common import add_ingestion_metadata, default_raw_directory, write_raw_snapshot
+from src.ingestion.common import (
+    add_ingestion_metadata,
+    default_raw_directory,
+    normalize_watermark,
+    write_raw_snapshot,
+)
 from src.utils.database import DatabaseConfigurationError, create_database_engine
 
 logger = logging.getLogger(__name__)
@@ -81,3 +86,61 @@ def extract_retail_tables(
     finally:
         if engine is None:
             owned_engine.dispose()
+
+
+def extract_table_since(
+    table_name: str,
+    updated_since: datetime | str,
+    *,
+    engine: Engine | None = None,
+    raw_directory: str | Path | None = None,
+) -> pd.DataFrame:
+    """Extract rows updated on or after the watermark and write the batch to raw."""
+    table = table_name.strip().lower()
+    if table not in ALLOWED_TABLES:
+        raise ValueError(
+            f"Unsupported table '{table_name}'. Allowed tables: {', '.join(sorted(ALLOWED_TABLES))}."
+        )
+    watermark = normalize_watermark(updated_since)
+
+    owns_engine = engine is None
+    active_engine = engine
+    try:
+        if active_engine is None:
+            active_engine = create_database_engine()
+        query = text(
+            f"SELECT * FROM {table} "
+            "WHERE updated_at >= :updated_since ORDER BY updated_at"
+        )
+        with active_engine.connect() as connection:
+            records = pd.read_sql_query(
+                query,
+                connection,
+                params={"updated_since": watermark.to_pydatetime()},
+            )
+    except (SQLAlchemyError, DatabaseConfigurationError) as error:
+        logger.exception("Incremental PostgreSQL extraction failed for table %s", table)
+        raise PostgresExtractionError(
+            f"Incremental PostgreSQL extraction failed for table '{table}'. "
+            "Check the database settings and connection."
+        ) from error
+    finally:
+        if owns_engine and active_engine is not None:
+            active_engine.dispose()
+
+    timestamp = datetime.now(timezone.utc)
+    enriched = add_ingestion_metadata(records, "postgres", timestamp)
+    write_raw_snapshot(
+        enriched,
+        table,
+        "postgres",
+        timestamp,
+        raw_directory or default_raw_directory(),
+    )
+    logger.info(
+        "Incrementally extracted %s records from PostgreSQL table %s since %s",
+        len(enriched),
+        table,
+        watermark,
+    )
+    return enriched

@@ -47,6 +47,27 @@ def test_csv_ingestion_reports_missing_file(tmp_path: Path) -> None:
         ingest_csv_file(tmp_path / "missing.csv", raw_directory=tmp_path / "raw")
 
 
+def test_csv_ingestion_filters_inclusively_and_retains_invalid_timestamps(
+    tmp_path: Path,
+) -> None:
+    source_file = tmp_path / "orders.csv"
+    pd.DataFrame(
+        [
+            {"order_id": "older", "updated_at": "2025-01-01T00:00:00Z"},
+            {"order_id": "boundary", "updated_at": "2025-01-02T00:00:00Z"},
+            {"order_id": "invalid", "updated_at": "not-a-date"},
+        ]
+    ).to_csv(source_file, index=False)
+
+    records = ingest_csv_file(
+        source_file,
+        raw_directory=tmp_path / "raw",
+        updated_since="2025-01-02T00:00:00Z",
+    )
+
+    assert set(records["order_id"]) == {"boundary", "invalid"}
+
+
 def test_api_ingestion_adds_metadata_and_saves_raw_snapshot(tmp_path: Path) -> None:
     response = Mock()
     response.json.return_value = {
@@ -87,6 +108,26 @@ def test_api_ingestion_reports_http_failure(tmp_path: Path) -> None:
         )
 
 
+def test_api_ingestion_sends_inclusive_watermark_parameter(tmp_path: Path) -> None:
+    response = Mock()
+    response.json.return_value = {"orders": []}
+    session = Mock()
+    session.get.return_value = response
+
+    ingest_orders(
+        "http://mock.test/api/orders",
+        raw_directory=tmp_path,
+        updated_since="2025-01-02T00:00:00Z",
+        session=session,
+    )
+
+    session.get.assert_called_once_with(
+        "http://mock.test/api/orders",
+        timeout=30,
+        params={"updated_since": "2025-01-02T00:00:00Z"},
+    )
+
+
 def test_mock_api_serves_sample_orders(tmp_path: Path) -> None:
     server = ThreadingHTTPServer(
         ("127.0.0.1", 0),
@@ -104,6 +145,11 @@ def test_mock_api_serves_sample_orders(tmp_path: Path) -> None:
             f"http://127.0.0.1:{server.server_port}/api/orders",
             raw_directory=tmp_path,
         )
+        incremental_orders = ingest_orders(
+            f"http://127.0.0.1:{server.server_port}/api/orders",
+            raw_directory=tmp_path,
+            updated_since="2025-03-10T00:00:00Z",
+        )
     finally:
         server.shutdown()
         server.server_close()
@@ -113,6 +159,7 @@ def test_mock_api_serves_sample_orders(tmp_path: Path) -> None:
     assert isinstance(payload["orders"][0]["quantity"], int)
     assert len(ingested_orders) == 100
     assert set(ingested_orders["ingestion_source"]) == {"api"}
+    assert len(incremental_orders) == 2
 
 
 class _FakeConnection:
@@ -165,3 +212,30 @@ def test_postgres_extraction_reports_connection_failure(
 
     with pytest.raises(PostgresExtractionError, match="Check the database settings"):
         extract_table("orders", engine=FailedEngine(), raw_directory=tmp_path)
+
+
+def test_postgres_incremental_extraction_uses_inclusive_watermark(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_read_sql_query(query, connection, params):
+        captured["query"] = str(query)
+        captured["params"] = params
+        return pd.DataFrame([{"order_id": "O001", "updated_at": "2025-01-02"}])
+
+    monkeypatch.setattr(
+        "src.ingestion.postgres_ingestion.pd.read_sql_query", fake_read_sql_query
+    )
+    from src.ingestion.postgres_ingestion import extract_table_since
+
+    records = extract_table_since(
+        "orders",
+        "2025-01-02T00:00:00Z",
+        engine=_FakeEngine(),
+        raw_directory=tmp_path,
+    )
+
+    assert "updated_at >= :updated_since" in captured["query"]
+    assert captured["params"]["updated_since"].isoformat() == "2025-01-02T00:00:00+00:00"
+    assert records.loc[0, "ingestion_source"] == "postgres"

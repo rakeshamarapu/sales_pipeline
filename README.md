@@ -4,7 +4,7 @@ A beginner-friendly Python and PostgreSQL data engineering project for bringing 
 
 ## Project Status
 
-**Phases 1 through 5 complete:** the scaffold, sample data, source ingestion, validation and cleaning, file-based data layers, and PostgreSQL star-schema DDL are available. SCD Type 2, warehouse loading, analytics, and the end-to-end `main.py` runner will be added in later phases.
+**Phases 1 through 6 complete:** the scaffold, source ingestion, validation and cleaning, file data layers, PostgreSQL star schema, customer SCD Type 2 history, and incremental dimension/fact loading are implemented. Analytics, reconciliation, and the end-to-end `main.py` runner remain for later phases. Live PostgreSQL execution still needs a configured local server.
 
 ## Sample Data
 
@@ -32,6 +32,7 @@ src/ingestion/            CSV, REST API, and PostgreSQL readers
 src/validation/           Required-field, format, date, and reference checks
 src/transformation/       Cleaning, deduplication, and layer snapshot storage
 src/warehouse/            Star-schema DDL and PostgreSQL setup helpers
+src/loading/              Incremental dimension/fact loading and watermarks
 sql/create_tables.sql     Standalone copy of the star-schema DDL
 src/utils/                Configuration and database connection helpers
 sql/                      Database DDL and analytics SQL (later phases)
@@ -144,6 +145,38 @@ print(f"Inserted {inserted_dates} date rows")
 
 The date dimension uses `YYYYMMDD` integer keys and ignores dates already loaded. The schema files are [src/warehouse/star_schema.sql](src/warehouse/star_schema.sql) and [sql/create_tables.sql](sql/create_tables.sql); the tests ensure they stay identical. PostgreSQL execution requires a reachable server and database and has not been run in the current development environment.
 
+## Incremental Loading and SCD Type 2
+
+CSV, API, and PostgreSQL readers accept an optional inclusive `updated_since` watermark. Rows on the boundary are replayed; invalid CSV/API timestamps are retained for validation rather than silently filtered out. PostgreSQL incremental extraction uses a parameterized timestamp comparison.
+
+```python
+from src.ingestion.api_ingestion import ingest_orders
+from src.loading.incremental_loader import (
+  DEFAULT_ORDER_PIPELINE,
+  get_pipeline_watermark,
+  load_incremental_orders,
+)
+
+last_loaded_at = get_pipeline_watermark(DEFAULT_ORDER_PIPELINE)
+orders = ingest_orders(updated_since=last_loaded_at)
+result = load_incremental_orders(orders)
+print(f"Upserted {result.upserted_rows} orders")
+```
+
+`load_incremental_orders` resolves the customer version effective on the order date, product key, and date key. It upserts by `order_id` and advances the watermark in the same transaction. The database only accepts updates at least as recent as the stored source `updated_at`, so older replays cannot replace newer facts. Ensure the corresponding customer/product dimensions and `dim_date` range are loaded first.
+
+Load dimensions before facts:
+
+```python
+from src.loading.incremental_loader import upsert_products
+from src.warehouse.scd_type2 import apply_customer_changes
+
+apply_customer_changes(customer_changes)
+upsert_products(product_changes)
+```
+
+`apply_customer_changes` expires the current customer row and inserts a new version on tracked attribute changes; the exact source timestamp prevents stale same-day replays. Both operations advance their watermarks in their respective transactions. PostgreSQL connections are configured through the local `.env` file.
+
 ## Planned Pipeline Phases
 
 1. Create the project scaffold and sample data. (Complete)
@@ -151,6 +184,6 @@ The date dimension uses `YYYYMMDD` integer keys and ignores dates already loaded
 3. Validate, clean, and deduplicate records. (Complete)
 4. Store raw, clean, and curated data. (Complete)
 5. Create the PostgreSQL star schema. (Complete; live database execution pending)
-6. Add SCD Type 2 and incremental loading.
+6. Add SCD Type 2 and incremental loading. (Complete; live database execution pending)
 7. Add analytics, logging, and reconciliation.
 8. Add automated tests and complete run documentation.

@@ -32,6 +32,37 @@ def add_ingestion_metadata(
     return enriched
 
 
+def normalize_watermark(value: datetime | str) -> pd.Timestamp:
+    """Convert a watermark to a timezone-aware UTC pandas timestamp."""
+    watermark = pd.to_datetime(value, errors="coerce", utc=True)
+    if pd.isna(watermark):
+        raise ValueError(f"Invalid incremental watermark: {value!r}")
+    return watermark
+
+
+def filter_records_since(
+    records: pd.DataFrame,
+    watermark: datetime | str,
+    timestamp_column: str = "updated_at",
+) -> pd.DataFrame:
+    """Keep rows at or after a watermark, including rows with invalid timestamps.
+
+    Invalid timestamp rows are retained so schema validation can quarantine them.
+    The inclusive boundary makes equal-timestamp replays safe when loads are upserts.
+    """
+    if timestamp_column not in records.columns:
+        raise ValueError(
+            f"Incremental extraction requires a '{timestamp_column}' column."
+        )
+
+    normalized_watermark = normalize_watermark(watermark)
+    parsed_timestamps = pd.to_datetime(
+        records[timestamp_column], errors="coerce", utc=True
+    )
+    keep_mask = parsed_timestamps.isna() | parsed_timestamps.ge(normalized_watermark)
+    return records.loc[keep_mask].copy()
+
+
 def write_raw_snapshot(
     records: pd.DataFrame,
     entity: str,

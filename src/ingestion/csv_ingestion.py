@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.ingestion.common import add_ingestion_metadata, default_raw_directory, write_raw_snapshot
+from src.ingestion.common import (
+    add_ingestion_metadata,
+    default_raw_directory,
+    filter_records_since,
+    write_raw_snapshot,
+)
 from src.utils.config import load_config, resolve_project_path
 
 logger = logging.getLogger(__name__)
@@ -21,6 +26,7 @@ def ingest_csv_file(
     *,
     entity: str | None = None,
     raw_directory: str | Path | None = None,
+    updated_since: datetime | str | None = None,
 ) -> pd.DataFrame:
     """Read one CSV, add metadata, and persist the original rows in the raw layer."""
     source_path = resolve_project_path(file_path)
@@ -33,6 +39,14 @@ def ingest_csv_file(
     except (OSError, UnicodeDecodeError, pd.errors.ParserError, pd.errors.EmptyDataError) as error:
         logger.exception("Could not read CSV source file: %s", source_path)
         raise CsvIngestionError(f"Could not read CSV source file: {source_path}") from error
+
+    if updated_since is not None:
+        try:
+            records = filter_records_since(records, updated_since)
+        except ValueError as error:
+            raise CsvIngestionError(
+                f"Could not incrementally filter CSV source file: {source_path}"
+            ) from error
 
     entity_name = entity or source_path.stem
     timestamp = datetime.now(timezone.utc)
@@ -51,6 +65,7 @@ def ingest_csv_file(
 def ingest_sample_csvs(
     sample_directory: str | Path | None = None,
     raw_directory: str | Path | None = None,
+    updated_since: datetime | str | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Ingest the sample customer, product, and order CSV files."""
     if sample_directory is None:
@@ -64,6 +79,7 @@ def ingest_sample_csvs(
             sample_path / f"{entity}.csv",
             entity=entity,
             raw_directory=raw_directory,
+            updated_since=updated_since,
         )
         for entity in ("customers", "products", "orders")
     }

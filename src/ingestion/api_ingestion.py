@@ -9,7 +9,12 @@ from typing import Any
 import pandas as pd
 import requests
 
-from src.ingestion.common import add_ingestion_metadata, default_raw_directory, write_raw_snapshot
+from src.ingestion.common import (
+    add_ingestion_metadata,
+    default_raw_directory,
+    normalize_watermark,
+    write_raw_snapshot,
+)
 from src.utils.config import load_config, load_project_environment
 
 logger = logging.getLogger(__name__)
@@ -24,6 +29,7 @@ def ingest_orders(
     *,
     raw_directory: str | Path | None = None,
     timeout_seconds: int | None = None,
+    updated_since: datetime | str | None = None,
     session: Any = requests,
 ) -> pd.DataFrame:
     """Fetch orders from the configured API, annotate them, and save a raw snapshot."""
@@ -40,7 +46,13 @@ def ingest_orders(
     timeout = timeout_seconds or ingestion_config.get("api_timeout_seconds", 30)
 
     try:
-        response = session.get(url, timeout=timeout)
+        request_options: dict[str, Any] = {"timeout": timeout}
+        if updated_since is not None:
+            watermark = normalize_watermark(updated_since)
+            request_options["params"] = {
+                "updated_since": watermark.isoformat().replace("+00:00", "Z")
+            }
+        response = session.get(url, **request_options)
         response.raise_for_status()
         payload = response.json()
     except (requests.RequestException, ValueError) as error:
