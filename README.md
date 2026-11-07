@@ -4,7 +4,7 @@ A beginner-friendly Python and PostgreSQL data engineering project for bringing 
 
 ## Project Status
 
-**Phases 1 and 2 complete:** the scaffold, sample CSV data, CSV/API/PostgreSQL ingestion modules, and a local mock orders API are available. Validation, transformations, warehouse loading, analytics, and the end-to-end `main.py` runner will be added in later phases.
+**Phases 1 through 3 complete:** the scaffold, sample CSV data, source ingestion, schema validation, quarantine output, cleaning, and latest-valid deduplication are available. Layer orchestration, warehouse loading, analytics, and the end-to-end `main.py` runner will be added in later phases.
 
 ## Sample Data
 
@@ -29,6 +29,8 @@ data/                    Pipeline data folders
   quarantine/            Rejected records
   sample/                Local CSV input data
 src/ingestion/            CSV, REST API, and PostgreSQL readers
+src/validation/           Required-field, format, date, and reference checks
+src/transformation/       Cleaning and latest-valid record deduplication
 src/utils/                Configuration and database connection helpers
 sql/                      Database DDL and analytics SQL (later phases)
 logs/                     Pipeline execution logs
@@ -75,13 +77,36 @@ Each source writes timestamped CSV snapshots under `data/raw/`. The API reader u
 python -c "from src.ingestion.postgres_ingestion import extract_table; print(len(extract_table('orders')))"
 ```
 
-Run the Phase 2 tests with `pytest`.
+Run the current tests with `pytest`.
+
+## Validate and Clean Sample Data
+
+Ingestion functions return data frames. Order validation needs the customer and product IDs that passed their own checks. Invalid records are written to `data/quarantine/`; the cleaning functions return deduplicated data frames. Persistent clean-layer output will be connected in a later phase.
+
+```python
+import pandas as pd
+
+from src.transformation.data_cleaner import clean_and_deduplicate
+
+customers = clean_and_deduplicate(
+  pd.read_csv("data/sample/customers.csv"), "customers"
+).clean_records
+products = clean_and_deduplicate(
+  pd.read_csv("data/sample/products.csv"), "products"
+).clean_records
+orders = clean_and_deduplicate(
+  pd.read_csv("data/sample/orders.csv"),
+  "orders",
+  customer_ids=set(customers["customer_id"]),
+  product_ids=set(products["product_id"]),
+).clean_records
+```
 
 ## Planned Pipeline Phases
 
 1. Create the project scaffold and sample data. (Complete)
 2. Ingest API, CSV, and PostgreSQL records. (Complete)
-3. Validate, clean, and deduplicate records.
+3. Validate, clean, and deduplicate records. (Complete)
 4. Store raw, clean, and curated data.
 5. Create the PostgreSQL star schema.
 6. Add SCD Type 2 and incremental loading.
