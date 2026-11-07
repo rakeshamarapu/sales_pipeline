@@ -4,7 +4,7 @@ A beginner-friendly Python and PostgreSQL data engineering project for bringing 
 
 ## Project Status
 
-**Phases 1 through 3 complete:** the scaffold, sample CSV data, source ingestion, schema validation, quarantine output, cleaning, and latest-valid deduplication are available. Layer orchestration, warehouse loading, analytics, and the end-to-end `main.py` runner will be added in later phases.
+**Phases 1 through 4 complete:** the scaffold, sample data, source ingestion, schema validation, quarantine output, cleaning, deduplication, and file-based raw/clean/curated layers are available. Business transformations, warehouse loading, analytics, and the end-to-end `main.py` runner will be added in later phases.
 
 ## Sample Data
 
@@ -30,7 +30,7 @@ data/                    Pipeline data folders
   sample/                Local CSV input data
 src/ingestion/            CSV, REST API, and PostgreSQL readers
 src/validation/           Required-field, format, date, and reference checks
-src/transformation/       Cleaning and latest-valid record deduplication
+src/transformation/       Cleaning, deduplication, and layer snapshot storage
 src/utils/                Configuration and database connection helpers
 sql/                      Database DDL and analytics SQL (later phases)
 logs/                     Pipeline execution logs
@@ -81,7 +81,7 @@ Run the current tests with `pytest`.
 
 ## Validate and Clean Sample Data
 
-Ingestion functions return data frames. Order validation needs the customer and product IDs that passed their own checks. Invalid records are written to `data/quarantine/`; the cleaning functions return deduplicated data frames. Persistent clean-layer output will be connected in a later phase.
+Ingestion functions return data frames. Order validation needs the customer and product IDs that passed their own checks. Invalid records are written to `data/quarantine/`; the cleaning functions return deduplicated data frames.
 
 ```python
 import pandas as pd
@@ -102,12 +102,33 @@ orders = clean_and_deduplicate(
 ).clean_records
 ```
 
+## Save Clean and Curated Snapshots
+
+Raw snapshots are written automatically by ingestion. Save validated, deduplicated data to the clean layer with `write_clean_snapshot`. The curated writer stores a prepared data frame; business-specific curated transformations are a later step. Each call creates a timestamped CSV in the selected layer. Supplying the same `run_id` again replaces that entity's snapshot for that run.
+
+```python
+from src.transformation.data_cleaner import clean_and_deduplicate
+from src.transformation.data_layers import (
+  read_latest_snapshot,
+  write_clean_snapshot,
+  write_curated_snapshot,
+)
+
+cleaning_result = clean_and_deduplicate(
+  pd.read_csv("data/sample/customers.csv"), "customers"
+)
+run_id = "sample-20250101"
+write_clean_snapshot(cleaning_result.clean_records, "customers", run_id=run_id)
+write_curated_snapshot(cleaning_result.clean_records, "customers", run_id=run_id)
+latest_customers = read_latest_snapshot("clean", "customers")
+```
+
 ## Planned Pipeline Phases
 
 1. Create the project scaffold and sample data. (Complete)
 2. Ingest API, CSV, and PostgreSQL records. (Complete)
 3. Validate, clean, and deduplicate records. (Complete)
-4. Store raw, clean, and curated data.
+4. Store raw, clean, and curated data. (Complete)
 5. Create the PostgreSQL star schema.
 6. Add SCD Type 2 and incremental loading.
 7. Add analytics, logging, and reconciliation.
